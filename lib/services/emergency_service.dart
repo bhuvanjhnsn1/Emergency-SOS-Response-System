@@ -12,6 +12,7 @@ enum EmergencyPhase {
   acquiringLocation,
   sendingSms,
   makingCall,
+  tracking,
   completed,
   failed,
 }
@@ -21,6 +22,9 @@ class EmergencyService extends ChangeNotifier {
   EmergencyPhase _phase = EmergencyPhase.idle;
   String _statusDetail = '';
   Position? _lastPosition;
+  StreamSubscription<Position>? _locationSubscription;
+  Timer? _trackingTimer;
+  int _updateCount = 0;
 
   EmergencyPhase get phase => _phase;
   String get statusDetail => _statusDetail;
@@ -74,10 +78,7 @@ class EmergencyService extends ChangeNotifier {
       final callLaunched = await launchUrl(callUri);
 
       if (callLaunched) {
-        _updatePhase(
-          EmergencyPhase.completed,
-          'Emergency protocol completed successfully.',
-        );
+        _startContinuousTracking();
       } else {
         _updatePhase(
           EmergencyPhase.failed,
@@ -105,7 +106,52 @@ class EmergencyService extends ChangeNotifier {
 
   /// Reset to idle state
   void reset() {
+    _locationSubscription?.cancel();
+    _trackingTimer?.cancel();
+    _locationSubscription = null;
+    _trackingTimer = null;
+    _updateCount = 0;
     _updatePhase(EmergencyPhase.idle, '');
+  }
+
+  /// Start background tracking loop
+  void _startContinuousTracking() {
+    _updatePhase(EmergencyPhase.tracking, 'Live tracking active. Updates every 20s.');
+    
+    // 1. Subscribe to live GPS stream
+    _locationSubscription = LocationService.getLocationStream().listen((pos) {
+      _lastPosition = pos;
+      notifyListeners();
+    });
+
+    // 2. Periodic SMS Update Timer (Every 20 seconds)
+    _trackingTimer = Timer.periodic(const Duration(seconds: 20), (timer) async {
+      if (_phase != EmergencyPhase.tracking) {
+        timer.cancel();
+        return;
+      }
+
+      if (_lastPosition != null) {
+        _updateCount++;
+        final mapsUrl = LocationService.buildMapsUrl(
+          _lastPosition!.latitude,
+          _lastPosition!.longitude,
+        );
+        
+        final smsBody = Uri.encodeComponent(
+          'UPDATE #$_updateCount: Movement detected. New Location: $mapsUrl',
+        );
+        
+        final prefs = await SharedPreferences.getInstance();
+        final contactPhone = prefs.getString(PrefKeys.emergencyContactPhone) ?? '';
+        
+        if (contactPhone.isNotEmpty) {
+          final smsUri = Uri.parse('sms:$contactPhone?body=$smsBody');
+          await launchUrl(smsUri);
+          debugPrint('Sent tracking SMS update #$_updateCount');
+        }
+      }
+    });
   }
 
   void _updatePhase(EmergencyPhase newPhase, String detail) {

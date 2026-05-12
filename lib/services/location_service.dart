@@ -41,6 +41,16 @@ class LocationService {
     return position;
   }
 
+  /// Get a stream of location updates
+  static Stream<Position> getLocationStream() {
+    return Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10, // Update every 10 meters of movement
+      ),
+    );
+  }
+
   /// Build a Google Maps URL from coordinates
   static String buildMapsUrl(double latitude, double longitude) {
     return 'https://maps.google.com/?q=$latitude,$longitude';

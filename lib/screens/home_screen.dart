@@ -104,10 +104,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       case EmergencyPhase.acquiringLocation: return 1;
       case EmergencyPhase.sendingSms: return 2;
       case EmergencyPhase.makingCall: return 3;
-      case EmergencyPhase.completed: return 4;
+      case EmergencyPhase.tracking: return 4;
+      case EmergencyPhase.completed: return 5;
       default: return 0;
     }
-  }
+}
 
   Color _bleColor() {
     switch (_ble.state) {
@@ -142,6 +143,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final isTracking = _ems.phase == EmergencyPhase.tracking;
     final triggered = _ble.state == BleConnectionState.triggered || _ems.phase != EmergencyPhase.idle;
     final active = _ble.isConnected;
     final c = _bleColor();
@@ -173,7 +175,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ]),
               const SizedBox(height: 32),
               // Pulse Button
-              Center(child: PulseButton(isActive: active, isTriggered: triggered, onPressed: _onPulse)),
+              Center(child: PulseButton(
+                isActive: active, 
+                isTriggered: triggered, 
+                onPressed: _onPulse,
+              )),
               const SizedBox(height: 20),
               // Status pill
               Center(child: Container(
@@ -210,14 +216,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 iconColor: _contactName.isNotEmpty ? AppColors.accentPurple : AppColors.statusWarning, onTap: _goSettings),
               const SizedBox(height: 16),
               // Reset button
-              if (_ems.phase == EmergencyPhase.completed || _ems.phase == EmergencyPhase.failed)
+              if (_ems.phase == EmergencyPhase.completed || _ems.phase == EmergencyPhase.failed || isTracking)
                 ElevatedButton.icon(
                   onPressed: () { _ems.reset(); _ble.resetAfterEmergency(); },
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Reset & Reconnect'),
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.surfaceLight, foregroundColor: AppColors.textPrimary,
+                  icon: Icon(isTracking ? Icons.stop_circle_rounded : Icons.refresh_rounded),
+                  label: Text(isTracking ? 'Stop Emergency Tracking' : 'Reset & Reconnect'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isTracking ? AppColors.accentRed.withValues(alpha: 0.2) : AppColors.surfaceLight, 
+                    foregroundColor: isTracking ? AppColors.accentRed : AppColors.textPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: AppColors.surfaceBorder))),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: isTracking ? AppColors.accentRed : AppColors.surfaceBorder))),
                 ),
               const SizedBox(height: 40),
             ],

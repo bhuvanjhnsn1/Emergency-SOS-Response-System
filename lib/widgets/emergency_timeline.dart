@@ -60,6 +60,14 @@ class EmergencyTimeline extends StatelessWidget {
             isActive: currentStep == 3,
             isCompleted: currentStep > 3,
           ),
+          _buildConnector(isCompleted: currentStep > 3),
+          _buildStep(
+            index: 4,
+            icon: Icons.track_changes_rounded,
+            label: 'Live Movement Tracking',
+            isActive: currentStep == 4,
+            isCompleted: currentStep > 4,
+          ),
         ],
       ),
     );
