@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOS Guardian | Live Tracking</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0A0E1A;
+            --surface: #121829;
+            --accent: #FF3B5C;
+            --accent-cyan: #18FFFF;
+            --text: #F0F0F5;
+            --text-muted: #8A8FA8;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            height: 100%;
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+        }
+
+        #app {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Sidebar Styling */
+        #sidebar {
+            width: 350px;
+            background: var(--surface);
+            border-right: 1px solid #252D45;
+            padding: 24px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .logo-dot {
+            width: 12px; height: 12px;
+            background: var(--accent);
+            border-radius: 50%;
+            margin-right: 12px;
+            box-shadow: 0 0 15px var(--accent);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.5); opacity: 0.5; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .title {
+            font-weight: 800;
+            font-size: 20px;
+            letter-spacing: -0.5px;
+        }
+
+        .status-card {
+            background: #1A2138;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 24px;
+            border: 1px solid #252D45;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            background: rgba(255, 59, 92, 0.1);
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+
+        .user-name { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+        .last-update { font-size: 13px; color: var(--text-muted); }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .stat-item {
+            background: rgba(255,255,255,0.03);
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+
+        .stat-label { color: var(--text-muted); margin-bottom: 4px; }
+        .stat-val { font-weight: 600; color: var(--accent-cyan); }
+
+        /* Map Styling */
+        #map {
+            flex: 1;
+            background: #000;
+        }
+
+        .leaflet-container { background: #0b0d17 !important; }
+
+        /* Call Button */
+        .btn-call {
+            margin-top: auto;
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+
+        .btn-call:hover { transform: translateY(-2px); filter: brightness(1.1); }
+
+        /* Loader */
+        #loader {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--bg);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+
+<div id="loader">
+    <div class="logo-dot" style="width: 40px; height: 40px; margin-bottom: 20px;"></div>
+    <div style="font-weight: 600;">Initializing Live Tracker...</div>
+</div>
+
+<div id="app">
+    <div id="sidebar">
+        <div class="header">
+            <div class="logo-dot"></div>
+            <div class="title">SOS GUARDIAN</div>
+        </div>
+
+        <div class="status-card">
+            <div class="status-badge" id="status-text">Active SOS</div>
+            <div class="user-name" id="user-name">Unknown User</div>
+            <div class="last-update" id="last-update">Waiting for signal...</div>
+            
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-label">LATITUDE</div>
+                    <div class="stat-val" id="lat-val">0.000000</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">LONGITUDE</div>
+                    <div class="stat-val" id="lng-val">0.000000</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="history-log" style="font-size: 12px; color: var(--text-muted); overflow-y: auto;">
+            <strong>Event History</strong>
+            <ul id="history-list" style="list-style: none; padding: 0; margin-top: 10px;"></ul>
+        </div>
+
+        <a href="tel:100" class="btn-call">CALL AUTHORITIES</a>
+    </div>
+
+    <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Firebase App (the core Firebase SDK) -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    // --- PASTE YOUR FIREBASE CONFIG HERE ---
+    const firebaseConfig = {
+        apiKey: "YOUR_API_KEY",
+        authDomain: "YOUR_PROJECT.firebaseapp.com",
+        databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+        projectId: "YOUR_PROJECT",
+        storageBucket: "YOUR_PROJECT.appspot.com",
+        messagingSenderId: "YOUR_ID",
+        appId: "YOUR_APP_ID"
+    };
+    // ----------------------------------------
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // Get ID from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const trackingId = urlParams.get('id');
+
+    if (!trackingId) {
+        alert("No Tracking ID found in URL. Use ?id=PHONE_NUMBER");
+        document.getElementById('loader').innerHTML = "<h1>Error: Missing ID</h1>";
+    }
+
+    // Initialize Map
+    const map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // Dark Map Layer (CartoDB Dark Matter)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO'
+    }).addTo(map);
+
+    let marker;
+    let path = L.polyline([], { color: '#18FFFF', weight: 3, opacity: 0.6 }).addTo(map);
+
+    // Listen for data
+    const trackingRef = ref(db, 'emergencies/' + trackingId);
+    onValue(trackingRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            document.getElementById('loader').style.display = 'none';
+            
+            const lat = data.current.lat;
+            const lng = data.current.lng;
+            const name = data.name;
+            const lastSeen = new Date(data.last_seen).toLocaleTimeString();
+
+            // Update UI
+            document.getElementById('user-name').innerText = name;
+            document.getElementById('lat-val').innerText = lat.toFixed(6);
+            document.getElementById('lng-val').innerText = lng.toFixed(6);
+            document.getElementById('last-update').innerText = "Last sync: " + lastSeen;
+
+            // Update Marker
+            const pos = [lat, lng];
+            if (!marker) {
+                marker = L.circleMarker(pos, {
+                    radius: 8,
+                    fillColor: "#FF3B5C",
+                    color: "#FFF",
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 1
+                }).addTo(map);
+                map.setView(pos, 16);
+            } else {
+                marker.setLatLng(pos);
+            }
+
+            // Update Path
+            path.addLatLng(pos);
+
+            // Add to history list
+            const li = document.createElement('li');
+            li.style.padding = "4px 0";
+            li.innerText = `[${lastSeen}] Moved to ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+            const list = document.getElementById('history-list');
+            list.insertBefore(li, list.firstChild);
+        }
+    });
+</script>
+</body>
+</html>

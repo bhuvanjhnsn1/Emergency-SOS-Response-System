@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:firebase_database/firebase_database.dart';
 import '../models/emergency_contact.dart';
 import '../utils/constants.dart';
 import 'location_service.dart';
@@ -50,18 +51,15 @@ class EmergencyService extends ChangeNotifier {
       final contactPhone =
           prefs.getString(PrefKeys.emergencyContactPhone) ?? '';
 
-      if (contactPhone.isEmpty) {
-        _updatePhase(
-          EmergencyPhase.failed,
-          'No emergency contact configured! Please set up in Settings.',
-        );
-        return;
-      }
+      // Generate a tracking ID (using sanitized phone number)
+      final trackingId = contactPhone.replaceAll(RegExp(r'[^0-9]'), '');
 
-      // Phase 2: Send SMS
-      _updatePhase(EmergencyPhase.sendingSms, 'Sending emergency SMS...');
+      // Phase 2: Send SMS with Tracking Link
+      _updatePhase(EmergencyPhase.sendingSms, 'Sending Tracking Link...');
+      
+      final trackingUrl = "https://sos-guardian-tracking.web.app/?id=$trackingId";
       final smsBody = Uri.encodeComponent(
-        'EMERGENCY: $userName needs help! Location: $mapsUrl',
+        'EMERGENCY: $userName needs help! Live Tracking: $trackingUrl',
       );
       final smsUri = Uri.parse('sms:$contactPhone?body=$smsBody');
 
@@ -79,7 +77,7 @@ class EmergencyService extends ChangeNotifier {
       final callLaunched = await launchUrl(callUri);
 
       if (callLaunched) {
-        _startContinuousTracking();
+        _startFirebaseTracking(trackingId, userName);
       } else {
         _updatePhase(
           EmergencyPhase.failed,
@@ -115,18 +113,20 @@ class EmergencyService extends ChangeNotifier {
     _updatePhase(EmergencyPhase.idle, '');
   }
 
-  /// Start background tracking loop
-  void _startContinuousTracking() {
-    _updatePhase(EmergencyPhase.tracking, 'Live tracking active. Updates every 20s.');
+  /// Start background tracking loop using Firebase
+  void _startFirebaseTracking(String trackingId, String userName) {
+    _updatePhase(EmergencyPhase.tracking, 'Invisible Live Tracking Active');
     
+    final dbRef = FirebaseDatabase.instance.ref("emergencies/$trackingId");
+
     // 1. Subscribe to live GPS stream
     _locationSubscription = LocationService.getLocationStream().listen((pos) {
       _lastPosition = pos;
       notifyListeners();
     });
 
-    // 2. Periodic SMS Update Timer (Every 20 seconds)
-    _trackingTimer = Timer.periodic(const Duration(seconds: 20), (timer) async {
+    // 2. Periodic Firebase Update Timer (Every 15 seconds)
+    _trackingTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
       if (_phase != EmergencyPhase.tracking) {
         timer.cancel();
         return;
@@ -134,22 +134,24 @@ class EmergencyService extends ChangeNotifier {
 
       if (_lastPosition != null) {
         _updateCount++;
-        final mapsUrl = LocationService.buildMapsUrl(
-          _lastPosition!.latitude,
-          _lastPosition!.longitude,
-        );
         
-        final smsBody = Uri.encodeComponent(
-          'UPDATE #$_updateCount: Movement detected. New Location: $mapsUrl',
-        );
-        
-        final prefs = await SharedPreferences.getInstance();
-        final contactPhone = prefs.getString(PrefKeys.emergencyContactPhone) ?? '';
-        
-        if (contactPhone.isNotEmpty) {
-          final smsUri = Uri.parse('sms:$contactPhone?body=$smsBody');
-          await launchUrl(smsUri);
-          debugPrint('Sent tracking SMS update #$_updateCount');
+        try {
+          // Push silent update to Firebase
+          await dbRef.update({
+            "name": userName,
+            "last_seen": ServerValue.timestamp,
+            "current": {
+              "lat": _lastPosition!.latitude,
+              "lng": _lastPosition!.longitude,
+            },
+            "history/${DateTime.now().millisecondsSinceEpoch}": {
+              "lat": _lastPosition!.latitude,
+              "lng": _lastPosition!.longitude,
+            }
+          });
+          debugPrint('Firebase Sync #$_updateCount successful');
+        } catch (e) {
+          debugPrint('Firebase Sync Error: $e');
         }
       }
     });

@@ -202,6 +202,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               // Emergency detail
               if (_ems.statusDetail.isNotEmpty)
                 _buildDetailBanner(),
+
+              // Firebase Sync Status (Only during tracking)
+              if (_ems.phase == EmergencyPhase.tracking)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.accentCyan.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accentCyan),
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          'Streaming live movement to cloud...',
+                          style: TextStyle(color: AppColors.accentCyan, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
               // Section label
               const Padding(padding: EdgeInsets.only(top: 8, bottom: 12),
                 child: Text('SYSTEM STATUS', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 2.0))),
