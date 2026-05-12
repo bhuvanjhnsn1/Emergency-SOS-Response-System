@@ -6,12 +6,14 @@ class PulseButton extends StatefulWidget {
   final bool isActive;
   final bool isTriggered;
   final VoidCallback onPressed;
+  final VoidCallback? onLongPress;
 
   const PulseButton({
     super.key,
     required this.isActive,
     required this.isTriggered,
     required this.onPressed,
+    this.onLongPress,
   });
 
   @override
@@ -143,6 +145,7 @@ class _PulseButtonState extends State<PulseButton>
             },
             child: GestureDetector(
               onTap: widget.onPressed,
+              onLongPress: widget.onLongPress,
               child: Container(
                 width: 160,
                 height: 160,

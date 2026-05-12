@@ -179,6 +179,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 isActive: active, 
                 isTriggered: triggered, 
                 onPressed: _onPulse,
+                onLongPress: _showManualTrigger,
               )),
               const SizedBox(height: 20),
               // Status pill
