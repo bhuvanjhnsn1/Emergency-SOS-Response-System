@@ -61,6 +61,7 @@ class AppColors {
 /// SharedPreferences keys
 class PrefKeys {
   static const String userName = 'user_name';
+  static const String userPhone = 'user_phone';
   static const String emergencyContactName = 'emergency_contact_name';
   static const String emergencyContactPhone = 'emergency_contact_phone';
   static const String isSetupComplete = 'is_setup_complete';

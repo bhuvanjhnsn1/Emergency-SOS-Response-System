@@ -2,11 +2,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:url_launcher/url_launcher.dart' as launcher;
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:telephony/telephony.dart';
 import '../models/emergency_contact.dart';
 import '../utils/constants.dart';
 import 'location_service.dart';
+import 'user_service.dart';
 
 /// The current phase of the emergency protocol
 enum EmergencyPhase {
@@ -24,6 +27,8 @@ class EmergencyService extends ChangeNotifier {
   EmergencyPhase _phase = EmergencyPhase.idle;
   String _statusDetail = '';
   Position? _lastPosition;
+  final _userService = UserService();
+  final Telephony telephony = Telephony.instance;
   StreamSubscription<Position>? _locationSubscription;
   Timer? _trackingTimer;
   int _updateCount = 0;
@@ -45,43 +50,64 @@ class EmergencyService extends ChangeNotifier {
         position.longitude,
       );
 
-      // Load user settings
+      final user = FirebaseAuth.instance.currentUser;
+      final trackingId = user?.uid ?? 'unknown_user';
+      final trackingUrl = "https://sos-guardian-tracking.web.app/?id=$trackingId";
+      
       final prefs = await SharedPreferences.getInstance();
       final userName = prefs.getString(PrefKeys.userName) ?? 'User';
-      final contactPhone =
-          prefs.getString(PrefKeys.emergencyContactPhone) ?? '';
+      final contactsList = prefs.getStringList('emergency_contacts_list') ?? [];
+      final primaryContact = contactsList.isNotEmpty ? contactsList[0].split('|')[1] : '';
 
-      // Generate a tracking ID (using sanitized phone number)
-      final trackingId = contactPhone.replaceAll(RegExp(r'[^0-9]'), '');
-
-      // Phase 2: Send SMS with Tracking Link
-      _updatePhase(EmergencyPhase.sendingSms, 'Sending Tracking Link...');
-      
-      final trackingUrl = "https://sos-guardian-tracking.web.app/?id=$trackingId";
-      final smsBody = Uri.encodeComponent(
-        'EMERGENCY: $userName needs help! Live Tracking: $trackingUrl',
+      // Log event to Firestore History
+      await _userService.logEmergencyEvent(
+        userPhone: trackingId,
+        lat: _lastPosition!.latitude,
+        lng: _lastPosition!.longitude,
+        contactReached: primaryContact,
       );
-      final smsUri = Uri.parse('sms:$contactPhone?body=$smsBody');
 
-      final smsLaunched = await launchUrl(smsUri);
-      if (!smsLaunched) {
-        debugPrint('SMS launch failed, continuing to call phase...');
+      // Phase 2: Send SMS to ALL contacts (Directly/Silently)
+      _updatePhase(EmergencyPhase.sendingSms, 'Alerting all guardians (Auto-sending)...');
+      
+      for (var entry in contactsList) {
+        final parts = entry.split('|');
+        if (parts.length < 2) continue;
+        final phone = parts[1];
+        if (phone.isEmpty) continue;
+
+        final message = 'EMERGENCY: $userName needs help! Live Tracking: $trackingUrl';
+        
+        try {
+          await telephony.sendSms(
+            to: phone,
+            message: message,
+          );
+          debugPrint('SMS sent successfully to $phone');
+        } catch (e) {
+          debugPrint('Failed to send SMS to $phone: $e');
+          // Fallback: Try opening the SMS app if direct sending fails
+          final smsUri = Uri.parse('sms:$phone?body=${Uri.encodeComponent(message)}');
+          await launcher.launchUrl(smsUri);
+        }
+        
+        await Future.delayed(const Duration(milliseconds: 800));
       }
 
       // Brief delay before initiating call
-      await Future.delayed(const Duration(seconds: 2));
+      await Future.delayed(const Duration(seconds: 1));
 
-      // Phase 3: Make phone call
-      _updatePhase(EmergencyPhase.makingCall, 'Dialing emergency contact...');
-      final callUri = Uri.parse('tel:$contactPhone');
-      final callLaunched = await launchUrl(callUri);
+      // Phase 3: Make phone call to Primary Contact
+      _updatePhase(EmergencyPhase.makingCall, 'Dialing primary contact...');
+      final callUri = Uri.parse('tel:$primaryContact');
+      final callLaunched = await launcher.launchUrl(callUri);
 
       if (callLaunched) {
         _startFirebaseTracking(trackingId, userName);
       } else {
         _updatePhase(
           EmergencyPhase.failed,
-          'Failed to initiate call. Please dial $contactPhone manually.',
+          'Failed to initiate call. Please dial $primaryContact manually.',
         );
       }
     } catch (e) {

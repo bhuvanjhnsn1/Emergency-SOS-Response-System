@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../utils/constants.dart';
+import '../services/user_service.dart';
+import '../models/emergency_contact.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -11,8 +14,13 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _nameCtrl = TextEditingController();
-  final _contactNameCtrl = TextEditingController();
-  final _contactPhoneCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _ageCtrl = TextEditingController();
+  final _contactNameCtrl1 = TextEditingController();
+  final _contactPhoneCtrl1 = TextEditingController();
+  final _contactNameCtrl2 = TextEditingController();
+  final _contactPhoneCtrl2 = TextEditingController();
+  final _userService = UserService();
   bool _saved = false;
 
   // Permission states
@@ -31,8 +39,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
     _nameCtrl.text = p.getString(PrefKeys.userName) ?? '';
-    _contactNameCtrl.text = p.getString(PrefKeys.emergencyContactName) ?? '';
-    _contactPhoneCtrl.text = p.getString(PrefKeys.emergencyContactPhone) ?? '';
+    _phoneCtrl.text = p.getString(PrefKeys.userPhone) ?? '';
+    _ageCtrl.text = p.getString('user_age') ?? '';
+    final savedContacts = p.getStringList('emergency_contacts_list') ?? [];
+    if (savedContacts.isNotEmpty) {
+      final c1 = savedContacts[0].split('|');
+      if (c1.length >= 2) {
+        _contactNameCtrl1.text = c1[0];
+        _contactPhoneCtrl1.text = c1[1];
+      }
+    }
+    if (savedContacts.length >= 2) {
+      final c2 = savedContacts[1].split('|');
+      if (c2.length >= 2) {
+        _contactNameCtrl2.text = c2[0];
+        _contactPhoneCtrl2.text = c2[1];
+      }
+    }
     setState(() {});
   }
 
@@ -54,15 +77,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ].request();
     await _checkPermissions();
   }
-
   Future<void> _save() async {
     final name = _nameCtrl.text.trim();
-    final cName = _contactNameCtrl.text.trim();
-    final cPhone = _contactPhoneCtrl.text.trim();
+    final phone = _phoneCtrl.text.trim();
+    final age = _ageCtrl.text.trim();
+    final cName1 = _contactNameCtrl1.text.trim();
+    final cPhone1 = _contactPhoneCtrl1.text.trim();
+    final cName2 = _contactNameCtrl2.text.trim();
+    final cPhone2 = _contactPhoneCtrl2.text.trim();
 
-    if (name.isEmpty || cName.isEmpty || cPhone.isEmpty) {
+    if (name.isEmpty || phone.isEmpty || cPhone1.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Please fill in all fields'),
+        content: const Text('Please fill in your name, phone, and at least one contact'),
         backgroundColor: AppColors.accentRed,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -70,11 +96,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
     final p = await SharedPreferences.getInstance();
     await p.setString(PrefKeys.userName, name);
-    await p.setString(PrefKeys.emergencyContactName, cName);
-    await p.setString(PrefKeys.emergencyContactPhone, cPhone);
+    await p.setString(PrefKeys.userPhone, phone);
+    await p.setString('user_age', age);
+    await p.setStringList('emergency_contacts_list', [
+      '$cName1|$cPhone1',
+      if (cPhone2.isNotEmpty) '$cName2|$cPhone2',
+    ]);
     await p.setBool(PrefKeys.isSetupComplete, true);
+
+    // --- CLOUD SYNC ---
+    try {
+      await _userService.saveUserProfile(
+        phoneNumber: phone,
+        name: name,
+      );
+      await _userService.saveEmergencyContacts(
+        userPhone: user.uid,
+        contacts: [
+          EmergencyContact(name: cName1, phoneNumber: cPhone1),
+          if (cPhone2.isNotEmpty) EmergencyContact(name: cName2, phoneNumber: cPhone2),
+        ],
+      );
+    } catch (e) {
+      debugPrint('Cloud sync failed: $e');
+    }
+    // -----------------
 
     setState(() => _saved = true);
     Future.delayed(const Duration(seconds: 2), () {
@@ -94,8 +145,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _contactNameCtrl.dispose();
-    _contactPhoneCtrl.dispose();
+    _phoneCtrl.dispose();
+    _ageCtrl.dispose();
+    _contactNameCtrl1.dispose();
+    _contactPhoneCtrl1.dispose();
+    _contactNameCtrl2.dispose();
+    _contactPhoneCtrl2.dispose();
     super.dispose();
   }
 
@@ -121,14 +176,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionLabel('YOUR PROFILE'),
           const SizedBox(height: 12),
           _buildField(_nameCtrl, 'Your Name', Icons.person_rounded, 'Used in the SOS message'),
+          const SizedBox(height: 14),
+          _buildField(_phoneCtrl, 'Your Phone Number', Icons.phone_android_rounded, 'e.g. +91...', keyboard: TextInputType.phone),
+          const SizedBox(height: 14),
+          _buildField(_ageCtrl, 'Age', Icons.cake_rounded, 'Your age', keyboard: TextInputType.number),
           const SizedBox(height: 28),
 
-          // Emergency Contact Section
-          _sectionLabel('EMERGENCY CONTACT'),
+          // Emergency Contact 1
+          _sectionLabel('PRIMARY EMERGENCY CONTACT'),
           const SizedBox(height: 12),
-          _buildField(_contactNameCtrl, 'Contact Name', Icons.contact_emergency_rounded, 'Who to notify'),
+          _buildField(_contactNameCtrl1, 'Contact 1 Name', Icons.contact_emergency_rounded, 'First person to notify'),
           const SizedBox(height: 14),
-          _buildField(_contactPhoneCtrl, 'Phone Number', Icons.phone_rounded, 'Include country code (e.g. +91...)', keyboard: TextInputType.phone),
+          _buildField(_contactPhoneCtrl1, 'Contact 1 Phone', Icons.phone_rounded, 'e.g. +91...', keyboard: TextInputType.phone),
+          const SizedBox(height: 28),
+
+          // Emergency Contact 2
+          _sectionLabel('SECONDARY EMERGENCY CONTACT'),
+          const SizedBox(height: 12),
+          _buildField(_contactNameCtrl2, 'Contact 2 Name', Icons.contact_emergency_rounded, 'Backup person'),
+          const SizedBox(height: 14),
+          _buildField(_contactPhoneCtrl2, 'Contact 2 Phone', Icons.phone_rounded, 'e.g. +91...', keyboard: TextInputType.phone),
           const SizedBox(height: 28),
 
           // Permissions Section
@@ -192,6 +259,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   : const Text('Save Settings', key: ValueKey('save'), style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
               ),
             ),
+          ),
+          const SizedBox(height: 24),
+
+          // Sign Out Button
+          TextButton.icon(
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+              if (context.mounted) Navigator.pop(context);
+            },
+            icon: const Icon(Icons.logout_rounded, size: 18),
+            label: const Text('Sign Out'),
+            style: TextButton.styleFrom(foregroundColor: AppColors.accentRed),
           ),
           const SizedBox(height: 40),
         ],
