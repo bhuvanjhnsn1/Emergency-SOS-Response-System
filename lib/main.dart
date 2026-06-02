@@ -38,7 +38,7 @@ class SOSGuardianApp extends StatelessWidget {
         useMaterial3: true,
         brightness: Brightness.dark,
         scaffoldBackgroundColor: AppColors.background,
-        textTheme: GoogleFonts.interTextTheme(
+        textTheme: GoogleFonts.outfitTextTheme(
           ThemeData.dark().textTheme,
         ),
         colorScheme: ColorScheme.fromSeed(

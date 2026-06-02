@@ -12,31 +12,31 @@ class BleConstants {
 
 /// App-wide color palette
 class AppColors {
-  // Primary dark theme
-  static const Color background = Color(0xFF0A0E1A);
-  static const Color surface = Color(0xFF121829);
-  static const Color surfaceLight = Color(0xFF1A2138);
-  static const Color surfaceBorder = Color(0xFF252D45);
+  // Primary dark theme (Siren Theme)
+  static const Color background = Color(0xFF090A0F);
+  static const Color surface = Color(0xFF111422);
+  static const Color surfaceLight = Color(0xFF1A1F35);
+  static const Color surfaceBorder = Color(0xFF1D2235);
 
   // Accent colors
-  static const Color accentRed = Color(0xFFFF3B5C);
-  static const Color accentRedDark = Color(0xFFCC2E4A);
-  static const Color accentOrange = Color(0xFFFF6B35);
-  static const Color accentGreen = Color(0xFF00E676);
-  static const Color accentBlue = Color(0xFF448AFF);
-  static const Color accentCyan = Color(0xFF18FFFF);
-  static const Color accentPurple = Color(0xFFBB86FC);
+  static const Color accentRed = Color(0xFFFF3B30); // Siren Coral Red
+  static const Color accentRedDark = Color(0xFFD32F2F);
+  static const Color accentOrange = Color(0xFFFF9500);
+  static const Color accentGreen = Color(0xFF34C759); // Safety Emerald
+  static const Color accentBlue = Color(0xFF007AFF); // Electric Azure
+  static const Color accentCyan = Color(0xFF32ADE6);
+  static const Color accentPurple = Color(0xFFAF52DE);
 
   // Text
-  static const Color textPrimary = Color(0xFFF0F0F5);
-  static const Color textSecondary = Color(0xFF8A8FA8);
-  static const Color textMuted = Color(0xFF505672);
+  static const Color textPrimary = Color(0xFFFFFFFF);
+  static const Color textSecondary = Color(0xFF8E8E93);
+  static const Color textMuted = Color(0xFF48484A);
 
   // Status
-  static const Color statusActive = Color(0xFF00E676);
-  static const Color statusWarning = Color(0xFFFFD740);
-  static const Color statusDanger = Color(0xFFFF3B5C);
-  static const Color statusInactive = Color(0xFF505672);
+  static const Color statusActive = Color(0xFF34C759);
+  static const Color statusWarning = Color(0xFFFFCC00);
+  static const Color statusDanger = Color(0xFFFF3B30);
+  static const Color statusInactive = Color(0xFF48484A);
 
   // Gradients
   static const LinearGradient dangerGradient = LinearGradient(

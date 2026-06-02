@@ -32,6 +32,7 @@ class EmergencyService extends ChangeNotifier {
   StreamSubscription<Position>? _locationSubscription;
   Timer? _trackingTimer;
   int _updateCount = 0;
+  String? _activeEventId;
 
   EmergencyPhase get phase => _phase;
   String get statusDetail => _statusDetail;
@@ -45,70 +46,49 @@ class EmergencyService extends ChangeNotifier {
       final position = await LocationService.getCurrentLocation();
       _lastPosition = position;
 
-      final mapsUrl = LocationService.buildMapsUrl(
-        position.latitude,
-        position.longitude,
-      );
-
       final user = FirebaseAuth.instance.currentUser;
       final trackingId = user?.uid ?? 'unknown_user';
-      final trackingUrl = "https://sos-guardian-tracking.web.app/?id=$trackingId";
       
       final prefs = await SharedPreferences.getInstance();
       final userName = prefs.getString(PrefKeys.userName) ?? 'User';
+      final userPhone = prefs.getString(PrefKeys.userPhone) ?? '';
       final contactsList = prefs.getStringList('emergency_contacts_list') ?? [];
       final primaryContact = contactsList.isNotEmpty ? contactsList[0].split('|')[1] : '';
 
-      // Log event to Firestore History
-      await _userService.logEmergencyEvent(
-        userPhone: trackingId,
+      final contactPhones = contactsList.map((entry) {
+        final parts = entry.split('|');
+        return parts.length >= 2 ? parts[1].trim() : '';
+      }).where((phone) => phone.isNotEmpty).toList();
+
+      // Phase 2: Send app alert notification (by writing to Firestore sos_events)
+      _updatePhase(EmergencyPhase.sendingSms, 'Pushing alert notification to all guardians...');
+      
+      // Trigger the emergency event in Firestore
+      _activeEventId = await _userService.triggerEmergencyEvent(
+        senderUid: trackingId,
+        senderName: userName,
+        senderPhone: userPhone,
+        contactPhones: contactPhones,
         lat: _lastPosition!.latitude,
         lng: _lastPosition!.longitude,
-        contactReached: primaryContact,
       );
 
-      // Phase 2: Send SMS to ALL contacts (Directly/Silently)
-      _updatePhase(EmergencyPhase.sendingSms, 'Alerting all guardians (Auto-sending)...');
-      
-      for (var entry in contactsList) {
-        final parts = entry.split('|');
-        if (parts.length < 2) continue;
-        final phone = parts[1];
-        if (phone.isEmpty) continue;
-
-        final message = 'EMERGENCY: $userName needs help! Live Tracking: $trackingUrl';
-        
-        try {
-          await telephony.sendSms(
-            to: phone,
-            message: message,
-          );
-          debugPrint('SMS sent successfully to $phone');
-        } catch (e) {
-          debugPrint('Failed to send SMS to $phone: $e');
-          // Fallback: Try opening the SMS app if direct sending fails
-          final smsUri = Uri.parse('sms:$phone?body=${Uri.encodeComponent(message)}');
-          await launcher.launchUrl(smsUri);
-        }
-        
-        await Future.delayed(const Duration(milliseconds: 800));
-      }
-
-      // Brief delay before initiating call
       await Future.delayed(const Duration(seconds: 1));
 
       // Phase 3: Make phone call to Primary Contact
-      _updatePhase(EmergencyPhase.makingCall, 'Dialing primary contact...');
-      final callUri = Uri.parse('tel:$primaryContact');
-      final callLaunched = await launcher.launchUrl(callUri);
+      if (primaryContact.isNotEmpty) {
+        _updatePhase(EmergencyPhase.makingCall, 'Dialing primary contact...');
+        final callUri = Uri.parse('tel:$primaryContact');
+        final callLaunched = await launcher.launchUrl(callUri);
 
-      if (callLaunched) {
-        _startFirebaseTracking(trackingId, userName);
+        if (callLaunched) {
+          _startFirebaseTracking(trackingId, userName);
+        } else {
+          // Even if call fails, we proceed to live tracking because the app alert was pushed
+          _startFirebaseTracking(trackingId, userName);
+        }
       } else {
-        _updatePhase(
-          EmergencyPhase.failed,
-          'Failed to initiate call. Please dial $primaryContact manually.',
-        );
+        _startFirebaseTracking(trackingId, userName);
       }
     } catch (e) {
       _updatePhase(
@@ -129,13 +109,20 @@ class EmergencyService extends ChangeNotifier {
     return null;
   }
 
-  /// Reset to idle state
+  /// Reset to idle state and resolve the active SOS event in Firestore
   void reset() {
     _locationSubscription?.cancel();
     _trackingTimer?.cancel();
     _locationSubscription = null;
     _trackingTimer = null;
     _updateCount = 0;
+    
+    if (_activeEventId != null) {
+      final eventId = _activeEventId!;
+      _userService.resolveEmergencyEvent(eventId);
+      _activeEventId = null;
+    }
+    
     _updatePhase(EmergencyPhase.idle, '');
   }
 
