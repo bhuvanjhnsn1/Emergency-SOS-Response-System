@@ -220,18 +220,12 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyDFrLFpJdfQsHi0Q_vCSz-M6jtAWJiq5uY",
-            authDomain: "sos-guardian-22ba2.firebaseapp.com",
-            databaseURL: "https://sos-guardian-22ba2-default-rtdb.europe-west1.firebasedatabase.app",
-            projectId: "sos-guardian-22ba2",
-            storageBucket: "sos-guardian-22ba2.firebasestorage.app",
-            messagingSenderId: "725811688161",
-            appId: "1:725811688161:web:8ae2c04c7ce7fc17213da0"
-        };
-
+        const firebaseConfig = await (await fetch('firebase_config.json')).json();
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+
+
+
 
         const urlParams = new URLSearchParams(window.location.search);
         const trackingId = urlParams.get('id');

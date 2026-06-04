@@ -172,4 +172,5 @@ app.*.symbols
 .agents/skills/personal-*
 
 # Firebase
-lib/firebase_options.dart
+lib/firebase_options.dart
+firebase_config.json
